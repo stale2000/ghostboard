@@ -3,7 +3,8 @@
   "private": true,
   "packageManager": "pnpm@10.12.1",
   "scripts": {
-    "build": "pnpm -r build",
+    "build": "pnpm --filter @ghostboard/web build",
+    "build:workspace": "pnpm -r build",
     "dev": "pnpm --parallel --filter @ghostboard/web --filter @ghostboard/server dev",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck"

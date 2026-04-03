@@ -9,6 +9,7 @@ This repository contains a lightweight pnpm workspace scaffold for the image-bas
 - `packages/shared`: shared domain types for sessions, calibration, roles, assets, pieces, and room users
 - Lightweight geometry and calibration utilities, including a default calibration seed for uploaded tabletop images
 - A small built-in asset library plus coherent sample room/session helpers for demo wiring
+- A first-pass InsForge integration that reads the linked project from `.insforge/project.json`, mints an anon browser key server-side, and prepares the web app to use `@insforge/sdk`
 
 ## What is intentionally stubbed
 
@@ -19,6 +20,16 @@ This repository contains a lightweight pnpm workspace scaffold for the image-bas
 - No end-to-end boardgame.io server wiring yet; the game definition and server entrypoint are present, but transport/persistence integration still needs implementation
 - No persisted media records yet; browser-selected tabletop images stay local as browser object URLs with metadata only
 - No dedicated test harness yet in this scaffold; `pnpm typecheck` and `pnpm build` are the current verification gates
+
+## InsForge integration
+
+- If this repo has been linked with `npx @insforge/cli link`, GhostBoard reads `.insforge/project.json` on the server.
+- The web app exposes `GET /api/insforge/public-config` to:
+  - load the linked project metadata
+  - request an anon browser token from InsForge using the linked admin API key
+  - return a safe browser config for the GhostBoard UI
+- The demo room uses that route to prepare an `@insforge/sdk` client in the browser.
+- The linked project file remains gitignored.
 
 ## Local image MVP behavior
 

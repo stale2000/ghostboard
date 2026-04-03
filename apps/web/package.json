@@ -10,7 +10,7 @@
     "typecheck": "next typegen && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@ghostboard/shared": "workspace:*",
+    "@insforge/sdk": "^1.2.2",
     "boardgame.io": "^0.50.2",
     "next": "^15.2.0",
     "react": "^19.0.0",
