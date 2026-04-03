@@ -5,7 +5,8 @@ import { useEffect, useId, useRef, useState, type ChangeEvent } from "react";
 import type { PieceInstance, TabletopSessionState } from "../../lib/ghostboard-shared";
 
 import { createAssetLibrary } from "../../lib/tabletop/assets";
-import { createDefaultCalibration, isCalibrationValid } from "../../lib/tabletop/calibration";
+import { detectTableQuadFromImageData } from "../../lib/tabletop/cornerDetection";
+import { isCalibrationValid } from "../../lib/tabletop/calibration";
 import {
   createGhostBoardInsforgeClient,
   type GhostBoardInsforgeConfig
@@ -25,6 +26,7 @@ import {
 import { CalibrationEditor } from "./CalibrationEditor";
 import { MediaStage } from "./MediaStage";
 import { OverlayCanvas } from "./OverlayCanvas";
+import { TableCalibrationOverlay } from "./TableCalibrationOverlay";
 import { PieceInspector } from "./PieceInspector";
 import { PiecePalette } from "./PiecePalette";
 import { RoomSidebar } from "./RoomSidebar";
@@ -62,6 +64,25 @@ function formatBytes(value: number): string {
   }
 
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+async function loadImageDataFromMediaSource(mediaSource: NonNullable<TabletopSessionState["mediaSource"]>) {
+  const image = new Image();
+  image.decoding = "async";
+  image.src = mediaSource.assetUrl;
+  await image.decode();
+
+  const canvas = document.createElement("canvas");
+  canvas.width = mediaSource.width;
+  canvas.height = mediaSource.height;
+
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) {
+    throw new Error("GhostBoard could not inspect this image for corner detection.");
+  }
+
+  context.drawImage(image, 0, 0, mediaSource.width, mediaSource.height);
+  return context.getImageData(0, 0, mediaSource.width, mediaSource.height);
 }
 
 export function RoomDemoClient({ matchId }: RoomDemoClientProps) {
@@ -197,6 +218,9 @@ export function RoomDemoClient({ matchId }: RoomDemoClientProps) {
         return;
       }
 
+      const imageData = await loadImageDataFromMediaSource(nextLocalImage.mediaSource);
+      const detectedCalibration = detectTableQuadFromImageData(imageData, nextLocalImage.mediaSource);
+
       replaceLocalImage(nextLocalImage);
       setSession(() => {
         const nextSession = createSampleSessionState({
@@ -206,7 +230,7 @@ export function RoomDemoClient({ matchId }: RoomDemoClientProps) {
           mediaSource: nextLocalImage.mediaSource
         });
 
-        nextSession.calibration = createDefaultCalibration(nextLocalImage.mediaSource);
+        nextSession.calibration = detectedCalibration;
         nextSession.updatedAt = new Date().toISOString();
 
         return nextSession;
@@ -229,6 +253,29 @@ export function RoomDemoClient({ matchId }: RoomDemoClientProps) {
 
   function handleSelectPiece(pieceId: string) {
     setSelectedPieceId(pieceId);
+  }
+
+  function handleCalibrationChange(nextCalibration: NonNullable<TabletopSessionState["calibration"]>) {
+    setSession((currentSession) => ({
+      ...currentSession,
+      calibration: nextCalibration,
+      updatedAt: new Date().toISOString()
+    }));
+  }
+
+  async function handleAutoDetectCorners() {
+    if (!session.mediaSource) {
+      return;
+    }
+
+    try {
+      const imageData = await loadImageDataFromMediaSource(session.mediaSource);
+      const nextCalibration = detectTableQuadFromImageData(imageData, session.mediaSource);
+      handleCalibrationChange(nextCalibration);
+      setUploadError(null);
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "GhostBoard could not auto-detect this table surface.");
+    }
   }
 
   const calibrationLabel = isCalibrationValid(session.calibration)
@@ -338,8 +385,18 @@ export function RoomDemoClient({ matchId }: RoomDemoClientProps) {
                 Summon table image
               </label>
             }
-          />
-          <CalibrationEditor calibration={session.calibration} role={currentRole} />
+          >
+            {({ intrinsicSize, renderedRect }) => (
+              <TableCalibrationOverlay
+                calibration={session.calibration}
+                editable={currentRole === "host"}
+                intrinsicSize={intrinsicSize}
+                renderedRect={renderedRect}
+                onChangeCalibration={handleCalibrationChange}
+              />
+            )}
+          </MediaStage>
+          <CalibrationEditor calibration={session.calibration} role={currentRole} onAutoDetect={handleAutoDetectCorners} />
           <OverlayCanvas
             assets={session.assets}
             pieces={pieceList}

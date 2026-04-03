@@ -1,10 +1,6 @@
-import {
-  NORMALIZED_BOARD_SIZE,
-  type MediaSource,
-  type TableCalibration,
-  type Vec2
-} from "../ghostboard-shared";
+import { type MediaSource, type TableCalibration, type Vec2 } from "../ghostboard-shared";
 
+import { createCalibrationFromQuad } from "./cornerDetection";
 import { mediaToScreen, screenToMedia, type Rect, type Size } from "./geometry";
 
 function getQuadBounds(calibration: TableCalibration) {
@@ -35,23 +31,13 @@ export function isCalibrationValid(calibration: TableCalibration | null): calibr
 export function createDefaultCalibration(mediaSource: MediaSource): TableCalibration {
   const insetX = mediaSource.width * 0.08;
   const insetY = mediaSource.height * 0.1;
-  const now = new Date().toISOString();
 
-  return {
-    mediaWidth: mediaSource.width,
-    mediaHeight: mediaSource.height,
-    normalizedWidth: NORMALIZED_BOARD_SIZE.width,
-    normalizedHeight: NORMALIZED_BOARD_SIZE.height,
-    transformVersion: "homography-v1",
-    createdAt: now,
-    updatedAt: now,
-    tableQuadMediaPx: {
-      topLeft: { x: insetX, y: insetY },
-      topRight: { x: mediaSource.width - insetX, y: insetY },
-      bottomRight: { x: mediaSource.width - insetX, y: mediaSource.height - insetY },
-      bottomLeft: { x: insetX, y: mediaSource.height - insetY }
-    }
-  };
+  return createCalibrationFromQuad(mediaSource, {
+    topLeft: { x: insetX, y: insetY },
+    topRight: { x: mediaSource.width - insetX, y: insetY },
+    bottomRight: { x: mediaSource.width - insetX, y: mediaSource.height - insetY },
+    bottomLeft: { x: insetX, y: mediaSource.height - insetY }
+  });
 }
 
 export function mediaToBoard(mediaPoint: Vec2, calibration: TableCalibration): Vec2 {

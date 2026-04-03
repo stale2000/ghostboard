@@ -3,9 +3,10 @@ import type { TableCalibration, SessionRole } from "../../lib/ghostboard-shared"
 type CalibrationEditorProps = {
   role: SessionRole;
   calibration: TableCalibration | null;
+  onAutoDetect?: () => void | Promise<void>;
 };
 
-export function CalibrationEditor({ role, calibration }: CalibrationEditorProps) {
+export function CalibrationEditor({ role, calibration, onAutoDetect }: CalibrationEditorProps) {
   const canEdit = role === "host";
   const quad = calibration?.tableQuadMediaPx;
 
@@ -25,18 +26,40 @@ export function CalibrationEditor({ role, calibration }: CalibrationEditorProps)
             GhostBoard calibration lives here. Corner points stay in intrinsic media pixels while piece coordinates stay in normalized board space.
           </p>
         </div>
-        <span
-          style={{
-            background: "#ffffff",
-            borderRadius: 999,
-            color: "#92400e",
-            fontSize: 12,
-            fontWeight: 600,
-            padding: "6px 10px"
-          }}
-        >
-          {canEdit ? "Host editable" : "Read only"}
-        </span>
+        <div style={{ alignItems: "center", display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {canEdit && onAutoDetect ? (
+            <button
+              onClick={() => {
+                void onAutoDetect();
+              }}
+              style={{
+                background: "#f59e0b",
+                border: "none",
+                borderRadius: 999,
+                color: "#111827",
+                cursor: "pointer",
+                fontSize: 12,
+                fontWeight: 700,
+                padding: "8px 12px"
+              }}
+              type="button"
+            >
+              Re-detect corners
+            </button>
+          ) : null}
+          <span
+            style={{
+              background: "#ffffff",
+              borderRadius: 999,
+              color: "#92400e",
+              fontSize: 12,
+              fontWeight: 600,
+              padding: "6px 10px"
+            }}
+          >
+            {canEdit ? "Host editable" : "Read only"}
+          </span>
+        </div>
       </div>
 
       <div
@@ -59,7 +82,7 @@ export function CalibrationEditor({ role, calibration }: CalibrationEditorProps)
         >
           <p style={{ color: "#0f172a", fontWeight: 600, margin: 0 }}>Status</p>
           <p style={{ marginBottom: 0, marginTop: 6 }}>
-            {calibration ? "Calibration present in local session state" : "Calibration not saved yet"}
+            {calibration ? "Auto-detected quad ready for manual refinement" : "Calibration not saved yet"}
           </p>
         </div>
         <div
@@ -92,8 +115,8 @@ export function CalibrationEditor({ role, calibration }: CalibrationEditorProps)
           <p style={{ color: "#0f172a", fontWeight: 600, margin: 0 }}>Corner seed</p>
           <p style={{ marginBottom: 0, marginTop: 6 }}>
             {quad
-              ? `TL ${Math.round(quad.topLeft.x)},${Math.round(quad.topLeft.y)} • BR ${Math.round(quad.bottomRight.x)},${Math.round(quad.bottomRight.y)}`
-              : "The local media stub creates an inset default quad for host review."}
+              ? `TL ${Math.round(quad.topLeft.x)},${Math.round(quad.topLeft.y)} • TR ${Math.round(quad.topRight.x)},${Math.round(quad.topRight.y)} • BR ${Math.round(quad.bottomRight.x)},${Math.round(quad.bottomRight.y)} • BL ${Math.round(quad.bottomLeft.x)},${Math.round(quad.bottomLeft.y)}`
+              : "GhostBoard will auto-detect a rectangular play surface, then let the host drag corners into place."}
           </p>
         </div>
       </div>

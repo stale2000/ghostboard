@@ -1,14 +1,66 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+
 import type { MediaSource } from "../../lib/ghostboard-shared";
+import type { Rect, Size } from "../../lib/tabletop/geometry";
+
+type MediaStageRenderArgs = {
+  intrinsicSize: Size;
+  renderedRect: Rect;
+};
 
 type MediaStageProps = {
   mediaSource: MediaSource | null;
   mediaLabel?: string | null;
   statusLabel?: string;
   emptyStateAction?: React.ReactNode;
-  children?: React.ReactNode;
+  children?: React.ReactNode | ((args: MediaStageRenderArgs) => React.ReactNode);
 };
 
 export function MediaStage({ mediaSource, mediaLabel, statusLabel, emptyStateAction, children }: MediaStageProps) {
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
+  const [renderedRect, setRenderedRect] = useState<Rect | null>(null);
+
+  useEffect(() => {
+    function updateRenderedRect() {
+      if (!frameRef.current || !imageRef.current) {
+        setRenderedRect(null);
+        return;
+      }
+
+      const frameBounds = frameRef.current.getBoundingClientRect();
+      const imageBounds = imageRef.current.getBoundingClientRect();
+
+      setRenderedRect({
+        x: imageBounds.left - frameBounds.left,
+        y: imageBounds.top - frameBounds.top,
+        width: imageBounds.width,
+        height: imageBounds.height
+      });
+    }
+
+    updateRenderedRect();
+
+    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(updateRenderedRect) : null;
+
+    if (frameRef.current) {
+      resizeObserver?.observe(frameRef.current);
+    }
+
+    if (imageRef.current) {
+      resizeObserver?.observe(imageRef.current);
+    }
+
+    window.addEventListener("resize", updateRenderedRect);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", updateRenderedRect);
+    };
+  }, [mediaSource]);
+
   return (
     <section
       style={{
@@ -65,6 +117,7 @@ export function MediaStage({ mediaSource, mediaLabel, statusLabel, emptyStateAct
       </div>
 
       <div
+        ref={frameRef}
         style={{
           position: "relative",
           display: "flex",
@@ -80,11 +133,34 @@ export function MediaStage({ mediaSource, mediaLabel, statusLabel, emptyStateAct
         {mediaSource ? (
           <>
             <img
+              ref={imageRef}
               alt="Tabletop media"
+              onLoad={() => {
+                if (!frameRef.current || !imageRef.current) {
+                  return;
+                }
+
+                const frameBounds = frameRef.current.getBoundingClientRect();
+                const imageBounds = imageRef.current.getBoundingClientRect();
+
+                setRenderedRect({
+                  x: imageBounds.left - frameBounds.left,
+                  y: imageBounds.top - frameBounds.top,
+                  width: imageBounds.width,
+                  height: imageBounds.height
+                });
+              }}
               src={mediaSource.assetUrl}
               style={{ maxHeight: "70vh", objectFit: "contain", width: "100%" }}
             />
-            {children ? <div style={{ inset: 0, pointerEvents: "none", position: "absolute" }}>{children}</div> : null}
+            {children && renderedRect
+              ? typeof children === "function"
+                ? children({
+                    intrinsicSize: { width: mediaSource.width, height: mediaSource.height },
+                    renderedRect
+                  })
+                : <div style={{ inset: 0, position: "absolute" }}>{children}</div>
+              : null}
           </>
         ) : (
           <div style={{ color: "#94a3b8", display: "grid", fontSize: 14, gap: 16, maxWidth: 560, padding: 24, textAlign: "center" }}>
