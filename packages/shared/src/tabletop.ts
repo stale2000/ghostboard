@@ -111,6 +111,11 @@ export type SetUserRoleInput = {
   role: SessionRole;
 };
 
+export type JoinRoomInput = {
+  displayName: string;
+  role?: SessionRole;
+};
+
 export const SESSION_ROLES: SessionRole[] = ["host", "editor", "spectator"];
 
 export function isSessionRole(value: string): value is SessionRole {

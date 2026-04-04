@@ -1,13 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": "src",
+    "rootDir": "../..",
     "outDir": "dist",
-    "composite": true,
-    "paths": {
-      "@ghostboard/shared": ["../../packages/shared/dist/index.d.ts"],
-      "@ghostboard/shared/*": ["../../packages/shared/dist/*"]
-    }
+    "composite": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "../../packages/shared/src/**/*.ts", "../../packages/shared/src/**/*.d.ts"]
 }

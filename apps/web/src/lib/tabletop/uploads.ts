@@ -9,7 +9,7 @@ export type LocalTabletopImageRecord = {
   createdAt: string;
   fileName: string;
   fileSizeBytes: number;
-  objectUrl: string;
+  previewUrl: string;
   mediaSource: MediaSource;
 };
 
@@ -29,7 +29,23 @@ export function validateTabletopImageFile(file: File): string | null {
   return null;
 }
 
-function getImageDimensions(objectUrl: string): Promise<{ width: number; height: number }> {
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("The selected file could not be encoded for room sharing."));
+        return;
+      }
+
+      resolve(reader.result);
+    };
+    reader.onerror = () => reject(new Error("The selected file could not be encoded for room sharing."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function getImageDimensions(assetUrl: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const image = new Image();
     const cleanup = () => {
@@ -50,7 +66,7 @@ function getImageDimensions(objectUrl: string): Promise<{ width: number; height:
       reject(new Error("The selected file could not be read as an image."));
     };
 
-    image.src = objectUrl;
+    image.src = assetUrl;
   });
 }
 
@@ -61,37 +77,25 @@ export async function createLocalTabletopImageRecord(file: File): Promise<LocalT
     throw new Error(validationError);
   }
 
-  const objectUrl = URL.createObjectURL(file);
   const mimeType = file.type as TabletopImageMimeType;
+  const assetUrl = await readFileAsDataUrl(file);
+  const dimensions = await getImageDimensions(assetUrl);
+  const createdAt = new Date().toISOString();
 
-  try {
-    const dimensions = await getImageDimensions(objectUrl);
-    const createdAt = new Date().toISOString();
-
-    return {
-      id: `local-image-${createdAt}-${file.name}`,
-      createdAt,
-      fileName: file.name,
-      fileSizeBytes: file.size,
-      objectUrl,
-      mediaSource: {
-        kind: "image",
-        assetUrl: objectUrl,
-        width: dimensions.width,
-        height: dimensions.height,
-        mimeType
-      }
-    };
-  } catch (error) {
-    revokeLocalTabletopImageRecord({ objectUrl } as LocalTabletopImageRecord);
-    throw error;
-  }
+  return {
+    id: `shared-image-${createdAt}-${file.name}`,
+    createdAt,
+    fileName: file.name,
+    fileSizeBytes: file.size,
+    previewUrl: assetUrl,
+    mediaSource: {
+      kind: "image",
+      assetUrl,
+      width: dimensions.width,
+      height: dimensions.height,
+      mimeType
+    }
+  };
 }
 
-export function revokeLocalTabletopImageRecord(record: LocalTabletopImageRecord | null): void {
-  if (!record) {
-    return;
-  }
-
-  URL.revokeObjectURL(record.objectUrl);
-}
+export function revokeLocalTabletopImageRecord(_record: LocalTabletopImageRecord | null): void {}

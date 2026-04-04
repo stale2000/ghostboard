@@ -13,12 +13,19 @@
     "./tabletop": {
       "types": "./dist/tabletop.d.ts",
       "import": "./dist/tabletop.js"
+    },
+    "./game": {
+      "types": "./dist/game.d.ts",
+      "import": "./dist/game.js"
     }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "boardgame.io": "^0.50.2"
   },
   "devDependencies": {
     "typescript": "^5.7.3"
