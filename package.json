@@ -8,5 +8,8 @@
     "dev": "pnpm --parallel --filter @ghostboard/web --filter @ghostboard/server dev",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck"
+  },
+  "dependencies": {
+    "http-proxy": "^1.18.1"
   }
 }

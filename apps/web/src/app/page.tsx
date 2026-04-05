@@ -23,7 +23,7 @@ export default function HomePage() {
         hostName: displayName.trim() || "Host"
       });
 
-      router.push(`/table/${identity.roomId}`);
+      router.push(`/table?room=${encodeURIComponent(identity.roomId)}`);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "GhostBoard could not create a room.");
       setStatus(null);
@@ -39,8 +39,12 @@ export default function HomePage() {
     }
 
     try {
-      const roomId = value.includes("/") ? value.split("/").filter(Boolean).at(-1) ?? value : value;
-      router.push(`/table/${roomId}`);
+      const normalized = value.includes("room=")
+        ? new URL(value, "https://ghostboard.local").searchParams.get("room") ?? value
+        : value.includes("/")
+          ? value.split("/").filter(Boolean).at(-1) ?? value
+          : value;
+      router.push(`/table?room=${encodeURIComponent(normalized)}`);
     } catch {
       setError("That room link could not be parsed.");
     }

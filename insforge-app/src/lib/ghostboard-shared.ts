@@ -79,6 +79,49 @@ export type TabletopSessionState = {
   updatedAt: string;
 };
 
+export type CreatePieceInput = {
+  id: string;
+  assetId: string;
+  position: Vec2;
+  rotationDeg?: number;
+  scale?: number;
+  zIndex?: number;
+  metadata?: Record<string, PieceMetadataValue>;
+};
+
+export type UpdatePieceTransformInput = {
+  id: string;
+  position?: Vec2;
+  rotationDeg?: number;
+  scale?: number;
+  zIndex?: number;
+};
+
+export type SetPieceLockedInput = {
+  id: string;
+  locked: boolean;
+};
+
+export type DeletePieceInput = {
+  id: string;
+};
+
+export type SetUserRoleInput = {
+  userId: string;
+  role: SessionRole;
+};
+
+export type JoinRoomInput = {
+  displayName: string;
+  role?: SessionRole;
+};
+
+export const SESSION_ROLES: SessionRole[] = ["host", "editor", "spectator"];
+
+export function isSessionRole(value: string): value is SessionRole {
+  return SESSION_ROLES.includes(value as SessionRole);
+}
+
 export function createEmptySessionState(args: {
   sessionId: string;
   title: string;

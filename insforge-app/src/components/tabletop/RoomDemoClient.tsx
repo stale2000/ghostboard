@@ -1,22 +1,18 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent } from "react";
 
-import type { PieceInstance, TabletopSessionState } from "../../lib/ghostboard-shared";
+import type { TabletopSessionState } from "../../lib/ghostboard-shared";
 
+import {
+  GHOSTBOARD_MULTIPLAYER_SERVER,
+  createTabletopClient,
+  ensureRoomIdentity,
+  type StoredRoomIdentity
+} from "../../lib/boardgame/client";
 import { createAssetLibrary } from "../../lib/tabletop/assets";
 import { detectTableQuadFromImageData } from "../../lib/tabletop/cornerDetection";
 import { isCalibrationValid } from "../../lib/tabletop/calibration";
-import {
-  createGhostBoardInsforgeClient,
-  type GhostBoardInsforgeConfig
-} from "../../lib/insforge/client";
-import {
-  DEMO_CURRENT_USER_ID,
-  DEMO_ROOM_TITLE,
-  createSampleSessionState,
-  getDefaultRoleForUser
-} from "../../lib/tabletop/sampleSession";
 import {
   createLocalTabletopImageRecord,
   getAcceptedTabletopImageTypes,
@@ -26,10 +22,10 @@ import {
 import { CalibrationEditor } from "./CalibrationEditor";
 import { MediaStage } from "./MediaStage";
 import { OverlayCanvas } from "./OverlayCanvas";
-import { TableCalibrationOverlay } from "./TableCalibrationOverlay";
 import { PieceInspector } from "./PieceInspector";
 import { PiecePalette } from "./PiecePalette";
 import { RoomSidebar } from "./RoomSidebar";
+import { TableCalibrationOverlay } from "./TableCalibrationOverlay";
 
 const assetLibrary = createAssetLibrary();
 
@@ -37,34 +33,11 @@ type RoomDemoClientProps = {
   matchId: string;
 };
 
-type InsforgeConnectionState = {
-  status: "connecting" | "ready" | "missing" | "error";
+type ConnectionState = {
+  status: "connecting" | "ready" | "spectating" | "error";
   label: string;
   detail: string;
 };
-
-const browserInsforgeBaseUrl = process.env.NEXT_PUBLIC_INSFORGE_URL?.trim();
-const browserInsforgeAnonKey = process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY?.trim();
-
-function getInitialSession(matchId: string): TabletopSessionState {
-  return createSampleSessionState({
-    matchId,
-    title: DEMO_ROOM_TITLE,
-    assets: assetLibrary.byId
-  });
-}
-
-function getInitialSelectedPieceId(pieces: Record<string, PieceInstance>): string | null {
-  return Object.keys(pieces)[0] ?? null;
-}
-
-function formatBytes(value: number): string {
-  if (value < 1024 * 1024) {
-    return `${Math.round(value / 1024)} KB`;
-  }
-
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 async function loadImageDataFromMediaSource(mediaSource: NonNullable<TabletopSessionState["mediaSource"]>) {
   const image = new Image();
@@ -85,126 +58,140 @@ async function loadImageDataFromMediaSource(mediaSource: NonNullable<TabletopSes
   return context.getImageData(0, 0, mediaSource.width, mediaSource.height);
 }
 
+function formatBytes(value: number): string {
+  if (value < 1024 * 1024) {
+    return `${Math.round(value / 1024)} KB`;
+  }
+
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function createPiecePosition(index: number) {
+  const column = index % 4;
+  const row = Math.floor(index / 4) % 3;
+
+  return {
+    x: 0.2 + column * 0.18,
+    y: 0.22 + row * 0.18
+  };
+}
+
 export function RoomDemoClient({ matchId }: RoomDemoClientProps) {
   const inputId = useId();
-  const [session, setSession] = useState<TabletopSessionState>(() => getInitialSession(matchId));
+  const clientRef = useRef<ReturnType<typeof createTabletopClient> | null>(null);
+  const [session, setSession] = useState<TabletopSessionState | null>(null);
+  const [roomIdentity, setRoomIdentity] = useState<StoredRoomIdentity | null>(null);
   const [localImage, setLocalImage] = useState<LocalTabletopImageRecord | null>(null);
   const [selectedPieceId, setSelectedPieceId] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [insforgeConnection, setInsforgeConnection] = useState<InsforgeConnectionState>({
+  const [roomUrl, setRoomUrl] = useState<string>(`/table/${matchId}`);
+  const [connection, setConnection] = useState<ConnectionState>({
     status: "connecting",
-    label: "Reaching for the linked InsForge project...",
-    detail: "GhostBoard will use the linked project to mint an anon key and prepare the browser SDK."
+    label: "Connecting to the GhostBoard multiplayer server...",
+    detail: `Expected boardgame.io server: ${GHOSTBOARD_MULTIPLAYER_SERVER}`
   });
-  const localImageRef = useRef<LocalTabletopImageRecord | null>(null);
-  const insforgeClientRef = useRef<ReturnType<typeof createGhostBoardInsforgeClient> | null>(null);
-  const uploadRequestIdRef = useRef(0);
-  const currentRole = getDefaultRoleForUser(session.users, DEMO_CURRENT_USER_ID);
-  const selectedPiece = selectedPieceId ? session.pieces[selectedPieceId] ?? null : null;
-  const pieceList = Object.values(session.pieces);
 
   useEffect(() => {
-    return () => {
-      uploadRequestIdRef.current += 1;
-      revokeLocalTabletopImageRecord(localImageRef.current);
-      localImageRef.current = null;
-      insforgeClientRef.current = null;
-    };
-  }, []);
+    if (typeof window !== "undefined") {
+      setRoomUrl(window.location.href);
+    }
+  }, [matchId]);
 
   useEffect(() => {
     let isActive = true;
 
-    async function connectInsforge() {
-      if (browserInsforgeBaseUrl && browserInsforgeAnonKey) {
-        insforgeClientRef.current = createGhostBoardInsforgeClient({
-          projectName: "GhostBoard",
-          baseUrl: browserInsforgeBaseUrl,
-          anonKey: browserInsforgeAnonKey,
-          region: "linked",
-          appkey: "linked"
-        });
-
-        setInsforgeConnection({
-          status: "ready",
-          label: "Bound via public InsForge env",
-          detail: `${browserInsforgeBaseUrl} • browser anon key loaded from NEXT_PUBLIC_INSFORGE_* env vars.`
-        });
-        return;
-      }
-
+    async function connect() {
       try {
-        const response = await fetch("/api/insforge/public-config", { cache: "no-store" });
-        const payload = (await response.json()) as Partial<GhostBoardInsforgeConfig> & { error?: string };
-
+        const identity = await ensureRoomIdentity(matchId);
         if (!isActive) {
           return;
         }
 
-        if (!response.ok || !payload.baseUrl || !payload.anonKey || !payload.projectName || !payload.region || !payload.appkey) {
-          insforgeClientRef.current = null;
-          setInsforgeConnection({
-            status: response.status === 404 ? "missing" : "error",
-            label: payload.error ?? "GhostBoard could not prepare its InsForge binding.",
-            detail:
-              response.status === 404
-                ? "Run the InsForge CLI link command again if this repo should be attached to a project."
-                : "Check the linked project, local network access, and InsForge auth settings."
-          });
-          return;
-        }
+        setRoomIdentity(identity);
 
-        insforgeClientRef.current = createGhostBoardInsforgeClient({
-          projectName: payload.projectName,
-          baseUrl: payload.baseUrl,
-          anonKey: payload.anonKey,
-          region: payload.region,
-          appkey: payload.appkey,
-          publicConfig: payload.publicConfig
+        const client = createTabletopClient({
+          matchID: matchId,
+          playerID: identity.playerID,
+          credentials: identity.credentials
         });
 
-        setInsforgeConnection({
-          status: "ready",
-          label: `Bound to ${payload.projectName}`,
-          detail: `${payload.baseUrl} • anon browser client prepared for GhostBoard.`
+        clientRef.current = client;
+        client.subscribe((state) => {
+          if (!isActive || !state) {
+            return;
+          }
+
+          setSession(state.G);
         });
+        client.start();
+
+        setConnection(
+          identity.playerID
+            ? {
+                status: "ready",
+                label: `Connected to ${matchId} as ${identity.playerName}`,
+                detail: `Player slot ${identity.playerID} is subscribed through ${GHOSTBOARD_MULTIPLAYER_SERVER}.`
+              }
+            : {
+                status: "spectating",
+                label: `Watching ${matchId} as ${identity.playerName}`,
+                detail: "All interactive slots are occupied, so this browser joined as a synchronized spectator."
+              }
+        );
       } catch (error) {
         if (!isActive) {
           return;
         }
 
-        insforgeClientRef.current = null;
-        setInsforgeConnection({
+        setConnection({
           status: "error",
-          label: error instanceof Error ? error.message : "GhostBoard could not reach InsForge.",
-          detail: "The local Next.js route could not fetch a public browser config from the linked InsForge project."
+          label: error instanceof Error ? error.message : "GhostBoard could not connect to this room.",
+          detail: `Check that the multiplayer server is running at ${GHOSTBOARD_MULTIPLAYER_SERVER}.`
         });
       }
     }
 
-    void connectInsforge();
+    void connect();
 
     return () => {
       isActive = false;
+      clientRef.current?.stop();
+      clientRef.current = null;
     };
-  }, []);
+  }, [matchId]);
 
-  function replaceLocalImage(nextLocalImage: LocalTabletopImageRecord | null) {
-    const previousLocalImage = localImageRef.current;
+  useEffect(() => () => revokeLocalTabletopImageRecord(localImage), [localImage]);
 
-    localImageRef.current = nextLocalImage;
-    setLocalImage(nextLocalImage);
-    revokeLocalTabletopImageRecord(previousLocalImage);
-  }
+  useEffect(() => {
+    if (!session || !roomIdentity?.playerID || !clientRef.current) {
+      return;
+    }
+
+    const existing = session.users[roomIdentity.playerID];
+    if (existing?.displayName === roomIdentity.playerName) {
+      return;
+    }
+
+    const joinRoomMove = clientRef.current.moves.joinRoom;
+    if (!joinRoomMove) {
+      return;
+    }
+
+    joinRoomMove({
+      displayName: roomIdentity.playerName,
+      role: roomIdentity.playerID === "0" ? "host" : "editor"
+    });
+  }, [roomIdentity, session]);
+
+  const currentRole = roomIdentity?.playerID ? session?.users[roomIdentity.playerID]?.role ?? (roomIdentity.playerID === "0" ? "host" : "editor") : "spectator";
+  const pieceList = useMemo(() => Object.values(session?.pieces ?? {}), [session?.pieces]);
+  const selectedPiece = selectedPieceId ? session?.pieces[selectedPieceId] ?? null : null;
 
   async function handleImageSelection(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    const requestId = uploadRequestIdRef.current + 1;
-
-    uploadRequestIdRef.current = requestId;
     event.target.value = "";
 
-    if (!file) {
+    if (!file || !clientRef.current) {
       return;
     }
 
@@ -212,75 +199,80 @@ export function RoomDemoClient({ matchId }: RoomDemoClientProps) {
 
     try {
       const nextLocalImage = await createLocalTabletopImageRecord(file);
-
-      if (uploadRequestIdRef.current !== requestId) {
-        revokeLocalTabletopImageRecord(nextLocalImage);
-        return;
-      }
-
       const imageData = await loadImageDataFromMediaSource(nextLocalImage.mediaSource);
-      const detectedCalibration = detectTableQuadFromImageData(imageData, nextLocalImage.mediaSource);
+      const nextCalibration = detectTableQuadFromImageData(imageData, nextLocalImage.mediaSource);
 
-      replaceLocalImage(nextLocalImage);
-      setSession(() => {
-        const nextSession = createSampleSessionState({
-          matchId,
-          title: DEMO_ROOM_TITLE,
-          assets: assetLibrary.byId,
-          mediaSource: nextLocalImage.mediaSource
-        });
+      revokeLocalTabletopImageRecord(localImage);
+      setLocalImage(nextLocalImage);
 
-        nextSession.calibration = detectedCalibration;
-        nextSession.updatedAt = new Date().toISOString();
-
-        return nextSession;
-      });
-      setSelectedPieceId("piece-host-pawn");
+      const setMediaSourceMove = clientRef.current.moves.setMediaSource;
+      const setCalibrationMove = clientRef.current.moves.setCalibration;
+      setMediaSourceMove?.(nextLocalImage.mediaSource);
+      setCalibrationMove?.(nextCalibration);
     } catch (error) {
-      if (uploadRequestIdRef.current === requestId) {
-        setUploadError(error instanceof Error ? error.message : "GhostBoard could not prepare that table image.");
-      }
+      setUploadError(error instanceof Error ? error.message : "GhostBoard could not prepare that table image.");
     }
   }
 
-  function handleClearImage() {
-    uploadRequestIdRef.current += 1;
-    setUploadError(null);
-    replaceLocalImage(null);
-    setSession(getInitialSession(matchId));
-    setSelectedPieceId(null);
-  }
-
-  function handleSelectPiece(pieceId: string) {
-    setSelectedPieceId(pieceId);
-  }
-
-  function handleCalibrationChange(nextCalibration: NonNullable<TabletopSessionState["calibration"]>) {
-    setSession((currentSession) => ({
-      ...currentSession,
-      calibration: nextCalibration,
-      updatedAt: new Date().toISOString()
-    }));
-  }
-
   async function handleAutoDetectCorners() {
-    if (!session.mediaSource) {
+    if (!session?.mediaSource || !clientRef.current) {
       return;
     }
 
     try {
       const imageData = await loadImageDataFromMediaSource(session.mediaSource);
       const nextCalibration = detectTableQuadFromImageData(imageData, session.mediaSource);
-      handleCalibrationChange(nextCalibration);
+      clientRef.current.moves.setCalibration?.(nextCalibration);
       setUploadError(null);
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : "GhostBoard could not auto-detect this table surface.");
     }
   }
 
-  const calibrationLabel = isCalibrationValid(session.calibration)
+  function handleCalibrationChange(nextCalibration: NonNullable<TabletopSessionState["calibration"]>) {
+    clientRef.current?.moves.setCalibration?.(nextCalibration);
+  }
+
+  function handleCreatePiece(assetId: string) {
+    if (!session?.calibration || !clientRef.current) {
+      return;
+    }
+
+    const nextId = `piece-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+    setSelectedPieceId(nextId);
+    clientRef.current.moves.createPiece?.({
+      id: nextId,
+      assetId,
+      position: createPiecePosition(pieceList.length),
+      rotationDeg: 0,
+      scale: assetId === "card-back" ? 0.4 : 0.82,
+      zIndex: pieceList.length + 1
+    });
+  }
+
+  const calibrationLabel = session?.calibration && isCalibrationValid(session.calibration)
     ? `Normalized board space 0..${session.calibration.normalizedWidth} x 0..${session.calibration.normalizedHeight}`
-    : "Choose a table image to let GhostBoard seed local calibration metadata";
+    : "Upload a table image to generate and refine synchronized calibration";
+
+  if (!session) {
+    return (
+      <main
+        style={{
+          background:
+            "radial-gradient(circle at top, rgba(34, 211, 238, 0.18) 0%, rgba(34, 211, 238, 0) 24%), radial-gradient(circle at 15% 15%, rgba(168, 85, 247, 0.20) 0%, rgba(168, 85, 247, 0) 25%), linear-gradient(180deg, #020617 0%, #0f172a 48%, #111827 100%)",
+          color: "#e2e8f0",
+          minHeight: "100vh",
+          padding: 24
+        }}
+      >
+        <div style={{ margin: "0 auto", maxWidth: 820, paddingTop: 80, textAlign: "center" }}>
+          <h1 style={{ fontSize: 32, marginBottom: 12 }}>Connecting to GhostBoard room…</h1>
+          <p style={{ color: "#94a3b8", fontSize: 16 }}>{connection.label}</p>
+          <p style={{ color: "#64748b", fontSize: 14 }}>{connection.detail}</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main
@@ -296,15 +288,18 @@ export function RoomDemoClient({ matchId }: RoomDemoClientProps) {
         <RoomSidebar
           matchId={matchId}
           roomTitle={session.title}
+          roomUrl={roomUrl}
           users={Object.values(session.users)}
           currentRole={currentRole}
-          insforgeStatus={insforgeConnection.status}
-          insforgeLabel={insforgeConnection.label}
-          insforgeDetail={insforgeConnection.detail}
+          connectionStatus={connection.status}
+          connectionLabel={connection.label}
+          connectionDetail={connection.detail}
           mediaLabel={
             localImage
               ? `${localImage.fileName} • ${localImage.mediaSource.width}x${localImage.mediaSource.height} • ${formatBytes(localImage.fileSizeBytes)}`
-              : "No GhostBoard local image selected"
+              : session.mediaSource
+                ? `${session.mediaSource.width}x${session.mediaSource.height} shared room image`
+                : "No room image selected"
           }
           calibrationLabel={calibrationLabel}
           assetCount={Object.keys(session.assets).length}
@@ -317,47 +312,28 @@ export function RoomDemoClient({ matchId }: RoomDemoClientProps) {
                   background: "#0f172a",
                   borderRadius: 14,
                   color: "#f8fafc",
-                  cursor: "pointer",
+                  cursor: currentRole === "host" ? "pointer" : "not-allowed",
                   display: "inline-flex",
                   fontSize: 14,
                   fontWeight: 600,
+                  opacity: currentRole === "host" ? 1 : 0.55,
                   padding: "10px 14px"
                 }}
               >
-                Summon table image
+                Share table image
               </label>
               <input
                 id={inputId}
                 accept={getAcceptedTabletopImageTypes().join(",")}
+                disabled={currentRole !== "host"}
                 onChange={handleImageSelection}
                 style={{ display: "none" }}
                 type="file"
               />
               <p style={{ color: "#475569", fontSize: 12, margin: "10px 0 0" }}>
-                Local browser object URLs only. GhostBoard keeps this image in-browser for now and does not persist or upload it.
+                Images are encoded into shared room state so everyone opening this URL sees the same tabletop background.
               </p>
-              {uploadError ? (
-                <p style={{ color: "#b91c1c", fontSize: 13, margin: "10px 0 0" }}>{uploadError}</p>
-              ) : null}
-              {localImage ? (
-                <button
-                  onClick={handleClearImage}
-                  style={{
-                    background: "#ffffff",
-                    border: "1px solid #cbd5e1",
-                    borderRadius: 12,
-                    color: "#0f172a",
-                    cursor: "pointer",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    marginTop: 12,
-                    padding: "8px 12px"
-                  }}
-                  type="button"
-                >
-                  Banish local image
-                </button>
-              ) : null}
+              {uploadError ? <p style={{ color: "#b91c1c", fontSize: 13, margin: "10px 0 0" }}>{uploadError}</p> : null}
             </>
           }
         />
@@ -365,25 +341,27 @@ export function RoomDemoClient({ matchId }: RoomDemoClientProps) {
         <div style={{ display: "grid", gap: 24 }}>
           <MediaStage
             mediaSource={session.mediaSource}
-            mediaLabel={localImage?.fileName ?? null}
-            statusLabel={localImage ? "Local image ready" : "Waiting for local image"}
+            mediaLabel={localImage?.fileName ?? `Room ${matchId} tabletop`}
+            statusLabel={session.mediaSource ? "Shared room image ready" : "Waiting for room image"}
             emptyStateAction={
-              <label
-                htmlFor={inputId}
-                style={{
-                  background: "linear-gradient(135deg, #22d3ee 0%, #a855f7 100%)",
-                  borderRadius: 14,
-                  boxShadow: "0 10px 24px rgba(34, 211, 238, 0.22)",
-                  color: "#020617",
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  fontSize: 15,
-                  fontWeight: 700,
-                  padding: "12px 18px"
-                }}
-              >
-                Summon table image
-              </label>
+              currentRole === "host" ? (
+                <label
+                  htmlFor={inputId}
+                  style={{
+                    background: "linear-gradient(135deg, #22d3ee 0%, #a855f7 100%)",
+                    borderRadius: 14,
+                    boxShadow: "0 10px 24px rgba(34, 211, 238, 0.22)",
+                    color: "#020617",
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    fontSize: 15,
+                    fontWeight: 700,
+                    padding: "12px 18px"
+                  }}
+                >
+                  Share table image
+                </label>
+              ) : <span>Waiting for the host to share a table image…</span>
             }
           >
             {({ intrinsicSize, renderedRect }) => (
@@ -402,12 +380,12 @@ export function RoomDemoClient({ matchId }: RoomDemoClientProps) {
             pieces={pieceList}
             role={currentRole}
             selectedPieceId={selectedPiece?.id ?? null}
-            onSelectPiece={handleSelectPiece}
+            onSelectPiece={setSelectedPieceId}
           />
         </div>
 
         <div style={{ display: "grid", gap: 24 }}>
-          <PiecePalette assets={assetLibrary.assets} role={currentRole} />
+          <PiecePalette assets={assetLibrary.assets} role={currentRole} onCreatePiece={handleCreatePiece} />
           <PieceInspector assets={session.assets} selectedPiece={selectedPiece} />
         </div>
       </div>

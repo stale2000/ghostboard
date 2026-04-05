@@ -3,9 +3,10 @@ import type { PieceAsset, SessionRole } from "../../lib/ghostboard-shared";
 type PiecePaletteProps = {
   role: SessionRole;
   assets: PieceAsset[];
+  onCreatePiece?: (assetId: string) => void;
 };
 
-export function PiecePalette({ role, assets }: PiecePaletteProps) {
+export function PiecePalette({ role, assets, onCreatePiece }: PiecePaletteProps) {
   const canCreate = role === "host" || role === "editor";
 
   return (
@@ -56,6 +57,25 @@ export function PiecePalette({ role, assets }: PiecePaletteProps) {
                 {asset.width}x{asset.height}
               </div>
             </div>
+            {canCreate ? (
+              <button
+                onClick={() => onCreatePiece?.(asset.id)}
+                style={{
+                  background: "#22c55e",
+                  border: "none",
+                  borderRadius: 12,
+                  color: "#052e16",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  marginTop: 12,
+                  padding: "8px 12px"
+                }}
+                type="button"
+              >
+                Add to board
+              </button>
+            ) : null}
           </article>
         ))}
       </div>

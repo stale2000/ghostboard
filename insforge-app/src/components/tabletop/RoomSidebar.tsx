@@ -3,11 +3,12 @@ import type { RoomUser } from "../../lib/ghostboard-shared";
 type RoomSidebarProps = {
   matchId: string;
   roomTitle: string;
+  roomUrl: string;
   users: RoomUser[];
   currentRole: RoomUser["role"];
-  insforgeStatus: string;
-  insforgeLabel: string;
-  insforgeDetail: string;
+  connectionStatus: string;
+  connectionLabel: string;
+  connectionDetail: string;
   mediaLabel: string;
   calibrationLabel: string;
   assetCount: number;
@@ -18,11 +19,12 @@ type RoomSidebarProps = {
 export function RoomSidebar({
   matchId,
   roomTitle,
+  roomUrl,
   users,
   currentRole,
-  insforgeStatus,
-  insforgeLabel,
-  insforgeDetail,
+  connectionStatus,
+  connectionLabel,
+  connectionDetail,
   mediaLabel,
   calibrationLabel,
   assetCount,
@@ -55,7 +57,7 @@ export function RoomSidebar({
         <h1 style={{ color: "#f8fafc", fontSize: 28, marginBottom: 0, marginTop: 8 }}>{roomTitle}</h1>
         <p style={{ color: "#94a3b8", fontSize: 14, marginTop: 6 }}>Match ID: {matchId}</p>
         <p style={{ color: "#e2e8f0", fontSize: 14, marginTop: 6 }}>
-          You are manifesting this GhostBoard demo as a <strong>{currentRole}</strong>.
+          You are connected to this room as a <strong>{currentRole}</strong>.
         </p>
       </div>
 
@@ -114,7 +116,7 @@ export function RoomSidebar({
         }}
       >
         <div style={{ alignItems: "center", display: "flex", justifyContent: "space-between" }}>
-          <p style={{ color: "#e2e8f0", fontSize: 14, fontWeight: 600, margin: 0 }}>InsForge bond</p>
+          <p style={{ color: "#e2e8f0", fontSize: 14, fontWeight: 600, margin: 0 }}>Room link + sync</p>
           <span
             style={{
               background: "rgba(34, 211, 238, 0.14)",
@@ -126,11 +128,12 @@ export function RoomSidebar({
               padding: "6px 10px"
             }}
           >
-            {insforgeStatus}
+            {connectionStatus}
           </span>
         </div>
-        <p style={{ color: "#cbd5e1", fontSize: 14, marginBottom: 0, marginTop: 10 }}>{insforgeLabel}</p>
-        <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 0, marginTop: 10 }}>{insforgeDetail}</p>
+        <p style={{ color: "#cbd5e1", fontSize: 14, marginBottom: 0, marginTop: 10, wordBreak: "break-all" }}>{roomUrl}</p>
+        <p style={{ color: "#cbd5e1", fontSize: 14, marginBottom: 0, marginTop: 10 }}>{connectionLabel}</p>
+        <p style={{ color: "#94a3b8", fontSize: 13, marginBottom: 0, marginTop: 10 }}>{connectionDetail}</p>
       </div>
 
       <div
@@ -143,7 +146,7 @@ export function RoomSidebar({
           padding: 16
         }}
       >
-        {assetCount} built-in spirit tokens are indexed for the room. {pieceCount} demo pieces appear after a local image is chosen so the overlay and inspector stay coherent with calibration state.
+        {assetCount} built-in spirit tokens are indexed for the room. {pieceCount} shared pieces currently exist in synchronized room state.
       </div>
     </aside>
   );

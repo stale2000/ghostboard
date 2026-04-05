@@ -1,4 +1,4 @@
-import { Origins, Server } from "boardgame.io/dist/cjs/server.js";
+import { Server } from "boardgame.io/dist/cjs/server.js";
 
 import { TabletopSessionGame } from "./games/tabletopSessionGame.js";
 
@@ -10,24 +10,21 @@ export function createServerScaffold(): {
 } {
   const server = Server({
     games: [TabletopSessionGame],
-    origins: [
-      "http://localhost:3000",
-      "http://localhost:3001",
-      "http://localhost:3002",
-      "http://127.0.0.1:3000",
-      "http://127.0.0.1:3001",
-      "http://127.0.0.1:3002",
-      Origins.LOCALHOST,
-      Origins.LOCALHOST_IN_DEVELOPMENT
-    ],
-    apiOrigins: [
-      "http://localhost:3000",
-      "http://localhost:3001",
-      "http://localhost:3002",
-      "http://127.0.0.1:3000",
-      "http://127.0.0.1:3001",
-      "http://127.0.0.1:3002"
-    ]
+    origins: true,
+    apiOrigins: true
+  });
+
+  server.app.use(async (ctx: { set: (key: string, value: string) => void; method: string; status?: number }, next: () => Promise<unknown>) => {
+    ctx.set("Access-Control-Allow-Origin", "*");
+    ctx.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    ctx.set("Access-Control-Allow-Headers", "content-type,authorization");
+
+    if (ctx.method === "OPTIONS") {
+      ctx.status = 204;
+      return;
+    }
+
+    await next();
   });
 
   server.router.get("/healthz", (ctx: { body?: unknown }) => {
