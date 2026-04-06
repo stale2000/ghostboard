@@ -13,6 +13,7 @@ type TableCalibrationOverlayProps = {
   renderedRect: Rect;
   editable: boolean;
   onChangeCalibration?: (nextCalibration: TableCalibration) => void;
+  onCommitCalibration?: (nextCalibration: TableCalibration) => void;
 };
 
 type CornerKey = keyof Quad;
@@ -28,7 +29,8 @@ export function TableCalibrationOverlay({
   intrinsicSize,
   renderedRect,
   editable,
-  onChangeCalibration
+  onChangeCalibration,
+  onCommitCalibration
 }: TableCalibrationOverlayProps) {
   const overlayRef = useRef<SVGSVGElement | null>(null);
   const [draggingCorner, setDraggingCorner] = useState<CornerKey | null>(null);
@@ -57,6 +59,9 @@ export function TableCalibrationOverlay({
     }
 
     function stopDragging() {
+      if (calibration) {
+        onCommitCalibration?.(calibration);
+      }
       setDraggingCorner(null);
     }
 
@@ -67,7 +72,7 @@ export function TableCalibrationOverlay({
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", stopDragging);
     };
-  }, [calibration, draggingCorner, intrinsicSize, onChangeCalibration, renderedRect.height, renderedRect.width]);
+  }, [calibration, draggingCorner, intrinsicSize, onChangeCalibration, onCommitCalibration, renderedRect.height, renderedRect.width]);
 
   const screenQuad = useMemo(() => {
     if (!calibration) {

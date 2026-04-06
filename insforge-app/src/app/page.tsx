@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { createRoom } from "../lib/boardgame/client";
+import { createRoom } from "../lib/insforge/rooms";
 
 export default function HomePage() {
   const router = useRouter();
@@ -20,7 +20,7 @@ export default function HomePage() {
     try {
       const identity = await createRoom({
         title: title.trim() || "GhostBoard Shared Table",
-        hostName: displayName.trim() || "Host"
+        displayName: displayName.trim() || "Host"
       });
 
       router.push(`/table?room=${encodeURIComponent(identity.roomId)}`);
